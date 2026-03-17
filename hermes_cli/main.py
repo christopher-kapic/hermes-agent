@@ -41,6 +41,7 @@ Usage:
     hermes sessions browse     Interactive session picker with search
 
     hermes claw migrate --dry-run  # Preview migration without changes
+    hermes web                 # Start web UI dashboard
 """
 
 import argparse
@@ -2345,6 +2346,16 @@ def cmd_uninstall(args):
     run_uninstall(args)
 
 
+def cmd_web(args):
+    """Start the web UI server."""
+    from hermes_cli.web_server import start_server
+    start_server(
+        host=args.host,
+        port=args.port,
+        open_browser=not args.no_open,
+    )
+
+
 def _update_via_zip(args):
     """Update Hermes Agent by downloading a ZIP archive.
     
@@ -2918,7 +2929,7 @@ def _coalesce_session_name_args(argv: list) -> list:
     _SUBCOMMANDS = {
         "chat", "model", "gateway", "setup", "whatsapp", "login", "logout",
         "status", "cron", "doctor", "config", "pairing", "skills", "tools",
-        "sessions", "insights", "version", "update", "uninstall",
+        "sessions", "insights", "version", "update", "uninstall", "web",
     }
     _SESSION_FLAGS = {"-c", "--continue", "-r", "--resume"}
 
@@ -3994,7 +4005,20 @@ For more help on a command:
             sys.exit(1)
 
     acp_parser.set_defaults(func=cmd_acp)
-    
+
+    # =========================================================================
+    # web command
+    # =========================================================================
+    web_parser = subparsers.add_parser(
+        "web",
+        help="Start the web UI",
+        description="Launch the Hermes Agent web dashboard"
+    )
+    web_parser.add_argument("--port", type=int, default=9119, help="Port (default 9119)")
+    web_parser.add_argument("--host", default="127.0.0.1", help="Host (default 127.0.0.1)")
+    web_parser.add_argument("--no-open", action="store_true", help="Don't open browser automatically")
+    web_parser.set_defaults(func=cmd_web)
+
     # =========================================================================
     # Parse and execute
     # =========================================================================

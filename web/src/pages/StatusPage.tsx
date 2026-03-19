@@ -1,7 +1,17 @@
 import { useEffect, useState } from "react";
-import { Activity, Clock, Cpu, Database, Radio, Shield } from "lucide-react";
+import {
+  Activity,
+  AlertTriangle,
+  Clock,
+  Cpu,
+  Database,
+  Radio,
+  Shield,
+  Wifi,
+  WifiOff,
+} from "lucide-react";
 import { api } from "@/lib/api";
-import type { StatusResponse, SessionInfo } from "@/lib/api";
+import type { PlatformStatus, SessionInfo, StatusResponse } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
@@ -12,6 +22,42 @@ function timeAgo(ts: number): string {
   if (delta < 86400) return `${Math.floor(delta / 3600)}h ago`;
   if (delta < 172800) return "yesterday";
   return `${Math.floor(delta / 86400)}d ago`;
+}
+
+function isoTimeAgo(iso: string): string {
+  const delta = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (delta < 0 || Number.isNaN(delta)) return "unknown";
+  if (delta < 60) return "just now";
+  if (delta < 3600) return `${Math.floor(delta / 60)}m ago`;
+  if (delta < 86400) return `${Math.floor(delta / 3600)}h ago`;
+  return `${Math.floor(delta / 86400)}d ago`;
+}
+
+const PLATFORM_STATE_BADGE: Record<string, { variant: "success" | "warning" | "destructive"; label: string }> = {
+  connected: { variant: "success", label: "Connected" },
+  disconnected: { variant: "warning", label: "Disconnected" },
+  fatal: { variant: "destructive", label: "Error" },
+};
+
+const GATEWAY_STATE_DISPLAY: Record<string, { badge: "success" | "warning" | "destructive" | "outline"; label: string }> = {
+  running: { badge: "success", label: "Running" },
+  starting: { badge: "warning", label: "Starting" },
+  startup_failed: { badge: "destructive", label: "Failed" },
+  stopped: { badge: "outline", label: "Stopped" },
+};
+
+function gatewayValue(status: StatusResponse): string {
+  if (status.gateway_running) return `PID ${status.gateway_pid}`;
+  if (status.gateway_state === "startup_failed") return "Start failed";
+  return "Not running";
+}
+
+function gatewayBadge(status: StatusResponse) {
+  const info = status.gateway_state ? GATEWAY_STATE_DISPLAY[status.gateway_state] : null;
+  if (info) return info;
+  return status.gateway_running
+    ? { badge: "success" as const, label: "Running" }
+    : { badge: "outline" as const, label: "Off" };
 }
 
 export default function StatusPage() {
@@ -37,6 +83,7 @@ export default function StatusPage() {
   }
 
   const configNeedsMigration = status.config_version < status.latest_config_version;
+  const gwBadge = gatewayBadge(status);
 
   const items = [
     {
@@ -56,9 +103,9 @@ export default function StatusPage() {
     {
       icon: Radio,
       label: "Gateway",
-      value: status.gateway_running ? `PID ${status.gateway_pid}` : "Not running",
-      badgeText: status.gateway_running ? "Live" : "Off",
-      badgeVariant: (status.gateway_running ? "success" : "outline") as "success" | "outline",
+      value: gatewayValue(status),
+      badgeText: gwBadge.label,
+      badgeVariant: gwBadge.badge,
     },
     {
       icon: Shield,
@@ -69,6 +116,7 @@ export default function StatusPage() {
     },
   ];
 
+  const platforms = Object.entries(status.gateway_platforms ?? {});
   const activeSessions = sessions.filter((s) => s.is_active);
   const recentSessions = sessions.filter((s) => !s.is_active).slice(0, 5);
 
@@ -86,15 +134,23 @@ export default function StatusPage() {
               <div className="text-2xl font-bold">{value}</div>
 
               <Badge variant={badgeVariant} className="mt-2">
-                {badgeVariant === "success" && badgeText === "Live" && (
+                {badgeVariant === "success" && (
                   <span className="mr-1 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
                 )}
                 {badgeText}
               </Badge>
+
+              {label === "Gateway" && !status.gateway_running && status.gateway_exit_reason && (
+                <p className="mt-2 text-xs text-destructive">{status.gateway_exit_reason}</p>
+              )}
             </CardContent>
           </Card>
         ))}
       </div>
+
+      {platforms.length > 0 && (
+        <PlatformsCard platforms={platforms} />
+      )}
 
       {activeSessions.length > 0 && (
         <Card>
@@ -171,4 +227,69 @@ export default function StatusPage() {
       )}
     </div>
   );
+}
+
+function PlatformsCard({ platforms }: PlatformsCardProps) {
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <Radio className="h-5 w-5 text-muted-foreground" />
+          <CardTitle className="text-base">Connected Platforms</CardTitle>
+        </div>
+      </CardHeader>
+
+      <CardContent className="grid gap-3">
+        {platforms.map(([name, info]) => {
+          const display = PLATFORM_STATE_BADGE[info.state] ?? {
+            variant: "outline" as const,
+            label: info.state,
+          };
+          const IconComponent = info.state === "connected" ? Wifi : info.state === "fatal" ? AlertTriangle : WifiOff;
+
+          return (
+            <div
+              key={name}
+              className="flex items-center justify-between rounded-lg border border-border p-3"
+            >
+              <div className="flex items-center gap-3">
+                <IconComponent className={`h-4 w-4 ${
+                  info.state === "connected"
+                    ? "text-success"
+                    : info.state === "fatal"
+                      ? "text-destructive"
+                      : "text-warning"
+                }`} />
+
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-sm font-medium capitalize">{name}</span>
+
+                  {info.error_message && (
+                    <span className="text-xs text-destructive">{info.error_message}</span>
+                  )}
+
+                  {info.updated_at && (
+                    <span className="text-xs text-muted-foreground">
+                      Last update: {isoTimeAgo(info.updated_at)}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <Badge variant={display.variant}>
+                {display.variant === "success" && (
+                  <span className="mr-1 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
+                )}
+                {display.label}
+              </Badge>
+            </div>
+          );
+        })}
+      </CardContent>
+    </Card>
+  );
+}
+
+interface PlatformsCardProps {
+  platforms: [string, PlatformStatus][];
 }

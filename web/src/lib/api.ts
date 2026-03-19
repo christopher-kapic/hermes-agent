@@ -36,17 +36,28 @@ export const api = {
     }),
 };
 
+export interface PlatformStatus {
+  error_code?: string;
+  error_message?: string;
+  state: string;
+  updated_at: string;
+}
+
 export interface StatusResponse {
-  version: string;
-  release_date: string;
-  hermes_home: string;
-  config_path: string;
-  env_path: string;
-  config_version: number;
-  latest_config_version: number;
-  gateway_running: boolean;
-  gateway_pid: number | null;
   active_sessions: number;
+  config_path: string;
+  config_version: number;
+  env_path: string;
+  gateway_exit_reason: string | null;
+  gateway_pid: number | null;
+  gateway_platforms: Record<string, PlatformStatus>;
+  gateway_running: boolean;
+  gateway_state: string | null;
+  gateway_updated_at: string | null;
+  hermes_home: string;
+  latest_config_version: number;
+  release_date: string;
+  version: string;
 }
 
 export interface SessionInfo {

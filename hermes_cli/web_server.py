@@ -33,6 +33,7 @@ from hermes_cli.config import (
     check_config_version,
     redact_key,
 )
+from gateway.status import get_running_pid, read_runtime_status
 
 try:
     from fastapi import FastAPI, HTTPException
@@ -174,17 +175,21 @@ class EnvVarDelete(BaseModel):
 async def get_status():
     current_ver, latest_ver = check_config_version()
 
-    gateway_running = False
-    gateway_pid = None
-    try:
-        pid_file = get_hermes_home() / "gateway.pid"
-        if pid_file.exists():
-            pid = int(pid_file.read_text().strip())
-            os.kill(pid, 0)
-            gateway_running = True
-            gateway_pid = pid
-    except (ProcessLookupError, ValueError, OSError):
-        pass
+    gateway_pid = get_running_pid()
+    gateway_running = gateway_pid is not None
+
+    gateway_state = None
+    gateway_platforms: dict = {}
+    gateway_exit_reason = None
+    gateway_updated_at = None
+    runtime = read_runtime_status()
+    if runtime:
+        gateway_state = runtime.get("gateway_state")
+        gateway_platforms = runtime.get("platforms") or {}
+        gateway_exit_reason = runtime.get("exit_reason")
+        gateway_updated_at = runtime.get("updated_at")
+        if not gateway_running:
+            gateway_state = gateway_state if gateway_state in ("stopped", "startup_failed") else "stopped"
 
     active_sessions = 0
     try:
@@ -210,6 +215,10 @@ async def get_status():
         "latest_config_version": latest_ver,
         "gateway_running": gateway_running,
         "gateway_pid": gateway_pid,
+        "gateway_state": gateway_state,
+        "gateway_platforms": gateway_platforms,
+        "gateway_exit_reason": gateway_exit_reason,
+        "gateway_updated_at": gateway_updated_at,
         "active_sessions": active_sessions,
     }
 

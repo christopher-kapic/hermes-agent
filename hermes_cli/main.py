@@ -2348,6 +2348,14 @@ def cmd_uninstall(args):
 
 def cmd_web(args):
     """Start the web UI server."""
+    try:
+        import fastapi  # noqa: F401
+        import uvicorn  # noqa: F401
+    except ImportError:
+        print("Web UI dependencies not installed.")
+        print("Install them with:  pip install hermes-agent[web]")
+        sys.exit(1)
+
     from hermes_cli.web_server import start_server
     start_server(
         host=args.host,

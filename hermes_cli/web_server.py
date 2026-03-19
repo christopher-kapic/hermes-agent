@@ -44,7 +44,7 @@ try:
 except ImportError:
     raise SystemExit(
         "Web UI requires fastapi and uvicorn.\n"
-        "Install with:  pip install fastapi uvicorn"
+        "Run 'hermes web' to auto-install, or: pip install hermes-agent[web]"
     )
 
 WEB_DIST = Path(__file__).parent / "web_dist"

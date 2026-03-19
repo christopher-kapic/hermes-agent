@@ -389,6 +389,7 @@ def detect_provider_for_model(
     Returns ``None`` when no confident match is found.
 
     Priority:
+    0. Bare provider name → switch to that provider's default model
     1. Direct provider with credentials (highest)
     2. Direct provider without credentials → remap to OpenRouter slug
     3. OpenRouter catalog match
@@ -398,6 +399,18 @@ def detect_provider_for_model(
         return None
 
     name_lower = name.lower()
+
+    # --- Step 0: bare provider name typed as model ---
+    # If someone types `/model nous` or `/model anthropic`, treat it as a
+    # provider switch and pick the first model from that provider's catalog.
+    resolved_provider = _PROVIDER_ALIASES.get(name_lower, name_lower)
+    if (
+        resolved_provider in _PROVIDER_LABELS
+        and resolved_provider != normalize_provider(current_provider)
+    ):
+        default_models = _PROVIDER_MODELS.get(resolved_provider, [])
+        default_model = default_models[0] if default_models else name
+        return (resolved_provider, default_model)
 
     # Aggregators list other providers' models — never auto-switch TO them
     _AGGREGATORS = {"nous", "openrouter"}

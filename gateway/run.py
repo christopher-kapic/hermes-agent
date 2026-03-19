@@ -2380,8 +2380,14 @@ class GatewayRunner:
             lines = [
                 f"🤖 **Current model:** `{current}`",
                 f"**Provider:** {provider_label}",
-                "",
             ]
+            # Show custom endpoint URL when using a custom provider
+            if current_provider == "custom":
+                from hermes_cli.models import _get_custom_base_url
+                custom_url = _get_custom_base_url() or os.getenv("OPENAI_BASE_URL", "")
+                if custom_url:
+                    lines.append(f"**Endpoint:** `{custom_url}`")
+            lines.append("")
             curated = curated_models_for_provider(current_provider)
             if curated:
                 lines.append(f"**Available models ({provider_label}):**")
@@ -2454,6 +2460,11 @@ class GatewayRunner:
                 user_config["model"]["default"] = new_model
                 if provider_changed:
                     user_config["model"]["provider"] = target_provider
+                    # Clear stale base_url so the new provider's own endpoint
+                    # is used instead of the old custom endpoint.
+                    user_config["model"].pop("base_url", None)
+                    user_config["model"].pop("api_key", None)
+                    user_config["model"].pop("api", None)
                 with open(config_path, 'w', encoding="utf-8") as f:
                     yaml.dump(user_config, f, default_flow_style=False, sort_keys=False)
             except Exception as e:
@@ -2463,6 +2474,9 @@ class GatewayRunner:
         os.environ["HERMES_MODEL"] = new_model
         if provider_changed:
             os.environ["HERMES_INFERENCE_PROVIDER"] = target_provider
+            # Clear custom endpoint env vars so they don't override the
+            # new provider's base URL resolution.
+            os.environ.pop("OPENAI_BASE_URL", None)
 
         provider_label = _PROVIDER_LABELS.get(target_provider, target_provider)
         provider_note = f"\n**Provider:** {provider_label}" if provider_changed else ""

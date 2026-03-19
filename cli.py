@@ -973,6 +973,35 @@ def save_config_value(key_path: str, value: any) -> bool:
         return False
 
 
+def _clear_stale_model_endpoint() -> None:
+    """Remove ``model.base_url`` and ``model.api_key`` from config.
+
+    Called when ``/model`` switches providers so the new provider's own
+    endpoint is used instead of a leftover custom base URL.  Also clears
+    ``OPENAI_BASE_URL`` from the process environment for the same reason.
+    """
+    user_config_path = _hermes_home / 'config.yaml'
+    project_config_path = Path(__file__).parent / 'cli-config.yaml'
+    config_path = user_config_path if user_config_path.exists() else project_config_path
+    try:
+        if config_path.exists():
+            with open(config_path, 'r') as f:
+                config = yaml.safe_load(f) or {}
+            model_cfg = config.get("model")
+            if isinstance(model_cfg, dict):
+                changed = False
+                for key in ("base_url", "api_key", "api"):
+                    if key in model_cfg:
+                        del model_cfg[key]
+                        changed = True
+                if changed:
+                    with open(config_path, 'w') as f:
+                        yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+    except Exception as e:
+        logger.debug("Could not clear stale endpoint from config: %s", e)
+    os.environ.pop("OPENAI_BASE_URL", None)
+
+
 # ============================================================================
 # HermesCLI Class
 # ============================================================================
@@ -2890,6 +2919,14 @@ class HermesCLI:
                     for mid, desc in curated:
                         current_marker = " ← current" if (is_active and mid == self.model) else ""
                         print(f"      {mid}{current_marker}")
+                elif p["id"] == "custom":
+                    from hermes_cli.models import _get_custom_base_url
+                    custom_url = _get_custom_base_url() or os.getenv("OPENAI_BASE_URL", "")
+                    if custom_url:
+                        print(f"      endpoint: {custom_url}")
+                    if is_active:
+                        print(f"      model: {self.model} ← current")
+                    print(f"      (use /model custom:<model-name>)")
                 else:
                     print(f"      (use /model {p['id']}:<model-name>)")
                 print()
@@ -3552,6 +3589,9 @@ class HermesCLI:
                         saved_model = save_config_value("model.default", new_model)
                         if provider_changed:
                             save_config_value("model.provider", target_provider)
+                            # Clear stale base_url/api_key so the new provider's
+                            # own endpoint is used instead of the old custom one.
+                            _clear_stale_model_endpoint()
                         if saved_model:
                             print(f"(^_^)b Model changed to: {new_model}{provider_note} (saved to config)")
                         else:
